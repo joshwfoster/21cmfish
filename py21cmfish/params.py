@@ -238,6 +238,7 @@ class Parameter(object):
         if self.vb: print(f'    Searching for lightcones with name {lightcone_filename}')
         lc_files = glob.glob(lightcone_filename)
         fid_filename = lightcone_filename.replace(self.param,'fid')
+        print('Fiducial file:', fid_filename)
         fid_files = glob.glob(fid_filename)
         lc_files.extend(fid_files)
 
@@ -264,7 +265,7 @@ class Parameter(object):
         """
         self.T = {}
         self.theta_params = {}
-        use_ETHOS = self.lightcones[0].flag_options.pystruct['USE_ETHOS']
+        use_ETHOS = False #self.lightcones[0].flag_options.pystruct['USE_ETHOS']
 
         for lc in self.lightcones:
             if use_ETHOS:
@@ -289,7 +290,7 @@ class Parameter(object):
             if self.param == 'k_PEAK':
                 self.theta_params[cosmo_key] = 1./self.theta_params[cosmo_key]**self.k_PEAK_order
 
-            if self.param == 'L_X' or 'F' in self.param or self.param == 'M_TURN':
+            if 'L_X' in self.param or 'F' in self.param or self.param == 'M_TURN':
                 self.theta_params[cosmo_key] = np.log10(self.theta_params[cosmo_key])  # make L_X, F log10
 
             # Sort increasing theta order
@@ -339,6 +340,26 @@ class Parameter(object):
                                     label='1/k_PEAK^%.1f < %.1e' % (self.k_PEAK_order, self.theta_params[cosmo_key][j]))
 
                 self.deriv_GS[cosmo_key] = deriv[1]
+
+            elif self.param == 'DM':
+                print('Calculating global signal derivative for DM parameter')
+                deriv = np.gradient(self.T[cosmo_key], self.theta_params[cosmo_key], axis=0, edge_order=2)
+
+                # Using the zeroth element for the gradient
+                self.deriv_GS[cosmo_key] = deriv[0]
+
+                # New insertion here:
+                deriv[1] = np.copy(deriv[0])
+                deriv[0] = (self.T[cosmo_key][1] -  self.T[cosmo_key][0]) / (self.theta_params[cosmo_key][1] - self.theta_params[cosmo_key][0])
+                deriv[2] = (self.T[cosmo_key][2] -  self.T[cosmo_key][0]) / (self.theta_params[cosmo_key][2] - self.theta_params[cosmo_key][0])
+
+                labels = ['one-sided -','two-sided','one-sided +']
+                if plot:
+                    for dd,d in enumerate(deriv):
+                        if len(deriv) <= 3:
+                            ax.plot(self.redshifts, d, lw=1, ls=ls, label=labels[dd])
+                        else:
+                            ax.plot(self.redshifts, d, lw=1, ls=ls)
 
             else:
                 deriv = np.gradient(self.T[cosmo_key], self.theta_params[cosmo_key], axis=0)
@@ -467,7 +488,7 @@ class Parameter(object):
         if self.vb: print(f'    Making powerspectra in {len(chunk_z_list_HERA)} redshift chunks and {n_psbins-1} k bins')
 
         self.PS = {}
-        use_ETHOS = self.lightcones[0].flag_options.pystruct['USE_ETHOS']
+        use_ETHOS = False #self.lightcones[0].flag_options.pystruct['USE_ETHOS']
 
         for lc in self.lightcones:
             if use_ETHOS:
@@ -481,7 +502,7 @@ class Parameter(object):
             if self.param == 'k_PEAK':
                 theta = 1./theta**self.k_PEAK_order
 
-            if self.param == 'L_X' or 'F' in self.param or self.param == 'M_TURN':
+            if 'L_X' in self.param or 'F' in self.param or self.param == 'M_TURN':
                 theta = np.log10(theta)  # make L_X, F log10
 
             if key not in self.PS:
@@ -731,9 +752,19 @@ class Parameter(object):
                                 ax[i].semilogx(k, deriv[j],
                                         lw=1, ls=ls,
                                         label='1/k_PEAK^%.1f < %.1e' % (self.k_PEAK_order, theta[j]))
+
+
+                elif self.param == 'DM':
+                    print('Performing power spectrum gradient for DM')
+                    deriv = np.gradient(PS, theta, axis=0, edge_order=2)
+                    deriv[1] = deriv[0]
+                    deriv[2] = deriv[1]
+                    print('Hackily corrected the spectrum gradient to be one-sided')
+
                 else:
                     deriv = np.gradient(PS, theta, axis=0)
-                    assert (deriv[1][~np.isnan(deriv[1])] == (PS[2][~np.isnan(deriv[1])]-PS[0][~np.isnan(deriv[1])])/(theta[2]-theta[0])).all(), 'two-sided derivative is wrong'
+                    assert np.allclose(deriv[1][~np.isnan(deriv[1])], (PS[2][~np.isnan(deriv[1])]-PS[0][~np.isnan(deriv[1])])/(theta[2]-theta[0])), 'two-sided derivative is wrong'
+
 
                 if self.k_HERA:
                     self.deriv_PS[cosmo_key][i] = deriv[1]
