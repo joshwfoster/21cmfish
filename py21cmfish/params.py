@@ -755,11 +755,10 @@ class Parameter(object):
 
 
                 elif self.param == 'DM':
-                    print('Performing power spectrum gradient for DM')
+                    # Performing power spectrum gradient for DM
                     deriv = np.gradient(PS, theta, axis=0, edge_order=2)
                     deriv[1] = deriv[0]
-                    deriv[2] = deriv[1]
-                    print('Hackily corrected the spectrum gradient to be one-sided')
+                    deriv[2] = deriv[1] # Hackily corrected the spectrum gradient to be one-sided
 
                 else:
                     deriv = np.gradient(PS, theta, axis=0)
