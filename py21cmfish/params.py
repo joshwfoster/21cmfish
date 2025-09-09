@@ -10,6 +10,27 @@ from .power_spectra import *
 from .io import *
 
 
+
+def gradient_forward(y, x, order=2):
+
+    coeffs = {
+        1: np.array([-1, 1]),
+        2: np.array([-3/2, 2, -1/2]),
+        3: np.array([-11/6, 3, -3/2, 1/3]),
+        4: np.array([-25/12, 4, -3, 4/3, -1/4]),
+        5: np.array([-137/60, 5, -5, 10/3, -5/4, 1/5]),
+        6: np.array([-49/20, 6, -15/2, 20/3, -15/4, 6/5, -1/6]),
+    }
+
+    assert order in coeffs.keys(), f"Order {order} not implemented."
+
+    dx_s = np.diff(x)
+    assert np.allclose(dx_s, dx_s[0]), "x must be evenly spaced."
+    dx = dx_s[0]
+
+    return coeffs[order] @ y / dx
+
+
 class Parameter(object):
     """Class for creating derivatives given 21cm parameters"""
     def __init__(self, param,
@@ -25,7 +46,8 @@ class Parameter(object):
                 clobber=False,
                 new=False,
                 fid_only=False,
-                vb=True):
+                vb=True,
+                dm_deriv_order=2):
 
         """
 
@@ -63,8 +85,12 @@ class Parameter(object):
 
         vb : bool
             Verbose?
+
+        dm_deriv_order : int
+            If param='DM', use this order for the finite difference derivative
         """
         self.vb = vb
+        self.dm_deriv_order = dm_deriv_order
 
         self.param = param
         print('########### fisher set up for',self.param)
@@ -342,21 +368,25 @@ class Parameter(object):
                 self.deriv_GS[cosmo_key] = deriv[1]
 
             elif self.param == 'DM':
-                print('Calculating global signal derivative for DM parameter')
-                deriv = np.gradient(self.T[cosmo_key], self.theta_params[cosmo_key], axis=0, edge_order=2)
+
+                print(f'Calculating global signal derivative at order {self.dm_deriv_order}')
+                # deriv = np.gradient(self.T[cosmo_key], self.theta_params[cosmo_key], axis=0, edge_order=2)
+                deriv = gradient_forward(self.T[cosmo_key][:self.dm_deriv_order+1], self.theta_params[cosmo_key], order=self.dm_deriv_order)
 
                 # Using the zeroth element for the gradient
-                self.deriv_GS[cosmo_key] = deriv[0]
+                self.deriv_GS[cosmo_key] = deriv
 
-                # New insertion here:
-                deriv[1] = np.copy(deriv[0])
-                deriv[0] = (self.T[cosmo_key][1] -  self.T[cosmo_key][0]) / (self.theta_params[cosmo_key][1] - self.theta_params[cosmo_key][0])
-                deriv[2] = (self.T[cosmo_key][2] -  self.T[cosmo_key][0]) / (self.theta_params[cosmo_key][2] - self.theta_params[cosmo_key][0])
+                # Plotting and comparison to 2nd order finite difference
+                deriv2 = np.gradient(self.T[cosmo_key][:3], self.theta_params[cosmo_key][:3], axis=0, edge_order=2)
+                deriv2[1] = deriv2[0]
+                deriv2[0] = (self.T[cosmo_key][1] -  self.T[cosmo_key][0]) / (self.theta_params[cosmo_key][1] - self.theta_params[cosmo_key][0])
+                deriv2[2] = (self.T[cosmo_key][2] -  self.T[cosmo_key][0]) / (self.theta_params[cosmo_key][2] - self.theta_params[cosmo_key][0])
 
                 labels = ['one-sided -','two-sided','one-sided +']
                 if plot:
-                    for dd,d in enumerate(deriv):
-                        if len(deriv) <= 3:
+                    ax.plot(self.redshifts, deriv, lw=1, ls=ls, label=f'order {self.dm_deriv_order} forward FD')
+                    for dd, d in enumerate(deriv2):
+                        if len(deriv2) <= 3:
                             ax.plot(self.redshifts, d, lw=1, ls=ls, label=labels[dd])
                         else:
                             ax.plot(self.redshifts, d, lw=1, ls=ls)
@@ -756,9 +786,18 @@ class Parameter(object):
 
                 elif self.param == 'DM':
                     # Performing power spectrum gradient for DM
-                    deriv = np.gradient(PS, theta, axis=0, edge_order=2)
-                    deriv[1] = deriv[0]
-                    deriv[2] = deriv[1] # Hackily corrected the spectrum gradient to be one-sided
+                    print(f'Calculating power spectrum derivative at order {self.dm_deriv_order}')
+                    if self.dm_deriv_order == 2:
+                        deriv = np.gradient(PS, theta, axis=0, edge_order=2)
+                        deriv[1] = deriv[0] # Hackily corrected the spectrum gradient to be one-sided
+                    else:
+                        deriv_order = gradient_forward(PS[:self.dm_deriv_order+1], theta, order=self.dm_deriv_order)
+                        # deriv[1] is used?
+                        deriv = np.zeros((len(theta), len(PS[0])))
+                        deriv[1] = deriv_order
+                    # Compare to 2nd order finite difference
+                    deriv_cmp = np.gradient(PS[:3], theta[:3], axis=0, edge_order=2)
+                    deriv_cmp[1] = deriv_cmp[0]
 
                 else:
                     deriv = np.gradient(PS, theta, axis=0)
@@ -778,13 +817,15 @@ class Parameter(object):
                         pass
 
                     if self.param != 'k_PEAK':
-                        ax[i].semilogx(k, deriv.T, alpha=0.7)
+                        ax[i].semilogx(k, deriv[1], alpha=0.7, label=f'order {self.dm_deriv_order}')
+                        ax[i].semilogx(k, deriv_cmp[1], alpha=0.7, label='order 2')
 
                     ax[i].scatter(self.PS_err[i]['k']*0.7, self.deriv_PS[cosmo_key][i],
                                     c='k', s=5, ls='dashed', zorder=100)
 
-                    ax[i].set_xlabel('k [$h$ Mpc$^{-1}$]')
-                    ax[i].set_ylabel(r'$\partial \Delta^2_{21} (mK^2)/\partial \theta$')
+                    # ax[i].set_xlabel('k [$h$ Mpc$^{-1}$]')
+                    # ax[i].set_ylabel(r'$\partial \Delta^2_{21} (mK^2)/\partial \theta$')
+                    # ax[i].set_xticklabels([])
 
             if plot:
                 ax[0].legend()
