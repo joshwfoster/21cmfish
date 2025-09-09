@@ -786,7 +786,8 @@ class Parameter(object):
 
                 elif self.param == 'DM':
                     # Performing power spectrum gradient for DM
-                    print(f'Calculating power spectrum derivative at order {self.dm_deriv_order}')
+                    if i == 0:
+                        print(f'Calculating power spectrum derivative at order {self.dm_deriv_order}')
                     if self.dm_deriv_order == 2:
                         deriv = np.gradient(PS, theta, axis=0, edge_order=2)
                         deriv[1] = deriv[0] # Hackily corrected the spectrum gradient to be one-sided
