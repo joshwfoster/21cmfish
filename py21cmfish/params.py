@@ -823,7 +823,8 @@ class Parameter(object):
 
                     if self.param != 'k_PEAK':
                         ax[i].semilogx(k, deriv[1], alpha=0.7, label=f'order {self.dm_deriv_order}')
-                        ax[i].semilogx(k, deriv_cmp[1], alpha=0.7, label='order 2')
+                        if self.param == 'DM':
+                            ax[i].semilogx(k, deriv_cmp[1], alpha=0.7, label='order 2')
 
                     ax[i].scatter(self.PS_err[i]['k']*0.7, self.deriv_PS[cosmo_key][i],
                                     c='k', s=5, ls='dashed', zorder=100)
