@@ -39,6 +39,7 @@ class Parameter(object):
                 n_chunks=24,
                 k_PEAK_order=2.,
                 output_dir=base_path+'examples/data/',
+                lightcone_dir=None,
                 PS_err_dir=base_path+'examples/data/21cmSense_noise/21cmSense_fid_EOS21/',
                 Park19=None,
                 k_HERA=True,
@@ -109,6 +110,9 @@ class Parameter(object):
             self.param_label = 'log10 '+self.param
 
         self.output_dir = output_dir
+        # Directory to read lightcones from. Defaults to output_dir (backwards compatible);
+        # set separately to write generated products somewhere other than the lightcones.
+        self.lightcone_dir = lightcone_dir if lightcone_dir is not None else output_dir
         self.PS_err_dir = PS_err_dir
 
         self.HII_DIM = HII_DIM
@@ -259,7 +263,7 @@ class Parameter(object):
         self.lightcones = []
 
         suffix = f'HIIDIM={self.HII_DIM}_BOXLEN={self.BOX_LEN}_fisher_*{regex}*{self.param}*'
-        lightcone_filename = f'{self.output_dir}LightCone_z{self.min_redshift:.1f}_*{suffix}.h5'
+        lightcone_filename = f'{self.lightcone_dir}LightCone_z{self.min_redshift:.1f}_*{suffix}.h5'
 
         if self.vb: print(f'    Searching for lightcones with name {lightcone_filename}')
         lc_files = glob.glob(lightcone_filename)
